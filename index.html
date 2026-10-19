@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RFX P2P - MultiWallet Exchange</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-gray-900 text-white font-sans min-h-screen">
+
+  <!-- Header -->
+  <nav class="bg-gray-800 p-4 border-b border-gray-700 flex justify-between items-center">
+    <h1 class="text-xl font-bold text-blue-500">RFX P2P</h1>
+    <div id="auth-status" class="text-xs bg-gray-700 px-3 py-1 rounded">Not Logged In</div>
+  </nav>
+
+  <div class="max-w-md mx-auto p-4 mt-4">
+    
+    <!-- Auth Box (Login / Register) -->
+    <div id="auth-card" class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+      <h2 class="text-lg font-bold mb-4 text-center">Login or Register</h2>
+      <input id="email" type="email" placeholder="Email Address" class="w-full p-3 mb-3 bg-gray-700 rounded text-white outline-none focus:ring-2 focus:ring-blue-500">
+      <input id="password" type="password" placeholder="Password" class="w-full p-3 mb-4 bg-gray-700 rounded text-white outline-none focus:ring-2 focus:ring-blue-500">
+      <div class="flex gap-2">
+        <button onclick="login()" class="w-1/2 bg-blue-600 hover:bg-blue-700 p-3 rounded font-bold">Login</button>
+        <button onclick="register()" class="w-1/2 bg-gray-600 hover:bg-gray-700 p-3 rounded font-bold">Register</button>
+      </div>
+    </div>
+
+    <!-- P2P Trading Dashboard -->
+    <div id="trade-dashboard" class="hidden space-y-4">
+      <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+        <h2 class="text-lg font-bold mb-2">Create P2P Escrow Order</h2>
+        <p class="text-xs text-gray-400 mb-4">Supported: EcoCash, InnBucks, ZiG, Cash, Mukuru, Crypto</p>
+        
+        <label class="block text-xs mb-1 text-gray-300">Select Wallet / Payment Method</label>
+        <select id="wallet-type" class="w-full p-3 mb-3 bg-gray-700 rounded text-white outline-none">
+          <option value="EcoCash">EcoCash</option>
+          <option value="InnBucks">InnBucks</option>
+          <option value="ZiG">ZiG</option>
+          <option value="Cash">Cash (Harare)</option>
+          <option value="Mukuru">Mukuru</option>
+          <option value="Crypto (USDT)">Crypto (USDT)</option>
+        </select>
+
+        <label class="block text-xs mb-1 text-gray-300">Amount ($)</label>
+        <input id="amount" type="number" placeholder="Enter Amount" class="w-full p-3 mb-4 bg-gray-700 rounded text-white outline-none">
+        
+        <button onclick="createOrder()" class="w-full bg-green-600 hover:bg-green-700 p-3 rounded font-bold">Post Escrow Trade</button>
+      </div>
+
+      <button onclick="logout()" class="w-full bg-red-600/30 hover:bg-red-600 text-red-200 p-2 rounded text-sm">Logout</button>
+    </div>
+
+  </div>
+
+  <script>
+    // Firebase Configuration Keys dza Maltiwallet P2P
+    const firebaseConfig = {
+      apiKey: "AIzaSyAJQzI4bXDEMYLr2B3Q5Yq3...", 
+      authDomain: "multiwalletp2p.firebaseapp.com",
+      projectId: "multiwalletp2p",
+      storageBucket: "multiwalletp2p.firebasestorage.app",
+      messagingSenderId: "63209264976",
+      appId: "1:63209264976:web:15b6c1f0f8c0...",
+      measurementId: "G-CPMVBW9J9R"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // Listen for Auth Changes
+    auth.onAuthStateChanged(user => {
+      if (user) {
+        document.getElementById('auth-status').innerText = user.email;
+        document.getElementById('auth-card').classList.add('hidden');
+        document.getElementById('trade-dashboard').classList.remove('hidden');
+      } else {
+        document.getElementById('auth-status').innerText = "Not Logged In";
+        document.getElementById('auth-card').classList.remove('hidden');
+        document.getElementById('trade-dashboard').classList.add('hidden');
+      }
+    });
+
+    // Register
+    function register() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      if (!email || !password) return alert("Zadza Email ne Password!");
+      auth.createUserWithEmailAndPassword(email, password)
+        .then(() => alert("Account Created Successfully!"))
+        .catch(err => alert("Error: " + err.message));
+    }
+
+    // Login
+    function login() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      if (!email || !password) return alert("Zadza Email ne Password!");
+      auth.signInWithEmailAndPassword(email, password)
+        .then(() => alert("Logged In!"))
+        .catch(err => alert("Error: " + err.message));
+    }
+
+    // Logout
+    function logout() {
+      auth.signOut();
+    }
+
+    // Create Order
+    function createOrder() {
+      const wallet = document.getElementById('wallet-type').value;
+      const amount = document.getElementById('amount').value;
+      const user = auth.currentUser;
+
+      if (!amount || amount <= 0) return alert("Isa Amount inodarika 0");
+
+      db.collection("p2p_orders").add({
+        userEmail: user.email,
+        wallet: wallet,
+        amount: parseFloat(amount),
+        status: "PENDING_ESCROW",
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      }).then(() => {
+        alert("Trade Order yakachengetwa muEscrow Database!");
+        document.getElementById('amount').value = '';
+      }).catch(err => alert("Error: " + err.message));
+    }
+  </script>
+</body>
+</html>
