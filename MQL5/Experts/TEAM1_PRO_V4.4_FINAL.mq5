@@ -1,93 +1,3 @@
-//+------------------------------------------------------------------+
-//| Team1_PRO_V4.4_FINAL.mq5 |
-//| FINAL FIXES: StartEquity + SymbolParse + CSV Robust |
-//+------------------------------------------------------------------+
-#property strict
-#include <Trade\Trade.mqh>
-CTrade trade;
-
-//--- HANDLES + BUFFERS
-int handle_fastMA, handle_slowMA, handle_rsi, handle_atr, handle_adx;
-double fastMA_buf[], slowMA_buf[], rsi_buf[], atr_buf[], adx_buf[];
-MqlRates rates[];
-
-//--- INPUTS
-input double RiskPercent = 1.0;
-input int FastMA = 10; input int SlowMA = 50; input int RSIPeriod = 14;
-input double StopLossPips = 20.0; input double TakeProfitPips = 40.0;
-input double TrailStart = 15.0; input double TrailStep = 5.0; input double BreakEven = 20.0;
-input int MaxSpreadPoints = 30;
-input bool UseDipRip = true; input double DipMultiplier = 1.5; input double RipMultiplier = 1.5; input int RSIDip = 30; input int RSIRip = 70;
-input bool UseMartingale = true; input double MartingaleMultiplier = 2.0; input int MaxMartingaleSteps = 3;
-input bool UseSidewaysFilter = true; input int ADXPeriod = 14; input double ADXThreshold = 20.0; input int ATRPeriod = 14; input double MinATR = 0.00010;
-input int MagicNumber = 12348; input bool TradeOnlyOne = true;
-input double MaxDailyLossPercent = 8.0; input double MaxTotalDrawdownPercent = 10.0; input bool CloseAllOnHalt = true; input bool UseEquityForProtection = true;
-input bool UseTradingHours = true; input int StartHour = 10; input int EndHour = 18;
-input bool UseNewsFilter = true; input bool FilterNewsByCurrency = true; input int MinutesBeforeNews = 30; input int MinutesAfterNews = 30;
-input int CooldownMinutes = 15;
-input bool UseFFNewsCSV = false; input string NewsCSV_FileName = "FFNews.csv";
-
-int news_hours[] = {14, 16}; int news_mins[] = {30, 30};
-double pip_value; double point_value; double stops_level; double freeze_level;
-double equity_peak = 0; double start_balance = 0; double start_equity = 0; // FIX 1
-datetime last_trade_time = 0; int last_day = -1; int martingale_step = 0;
-string base_currency; string quote_currency; // FIX 2
-
-//+------------------------------------------------------------------+
-int OnInit()
-{
-   handle_fastMA = iMA(_Symbol, PERIOD_CURRENT, FastMA, 0, MODE_EMA, PRICE_CLOSE);
-   handle_slowMA = iMA(_Symbol, PERIOD_CURRENT, SlowMA, 0, MODE_EMA, PRICE_CLOSE);
-   handle_rsi = iRSI(_Symbol, PERIOD_CURRENT, RSIPeriod, PRICE_CLOSE);
-   handle_atr = iATR(_Symbol, PERIOD_CURRENT, ATRPeriod);
-   handle_adx = iADX(_Symbol, PERIOD_CURRENT, ADXPeriod);
-   if(handle_fastMA==INVALID_HANDLE || handle_slowMA==INVALID_HANDLE || handle_rsi==INVALID_HANDLE
-   || handle_atr==INVALID_HANDLE || handle_adx==INVALID_HANDLE) return(INIT_FAILED);
-
-   point_value = _Point;
-   pip_value = (_Digits == 3 || _Digits == 5)? _Point * 10 : _Point;
-   stops_level = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * point_value;
-   freeze_level = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_FREEZE_LEVEL) * point_value;
-
-   ParseSymbolCurrencies(); // FIX 2
-
-   ArraySetAsSeries(fastMA_buf,true); ArraySetAsSeries(slowMA_buf,true);
-   ArraySetAsSeries(rsi_buf,true); ArraySetAsSeries(atr_buf,true);
-   ArraySetAsSeries(adx_buf,true); ArraySetAsSeries(rates,true);
-
-   equity_peak = AccountInfoDouble(ACCOUNT_EQUITY);
-   start_balance = AccountInfoDouble(ACCOUNT_BALANCE);
-   start_equity = AccountInfoDouble(ACCOUNT_EQUITY); // FIX 1
-   last_day = TimeDay(TimeCurrent());
-   trade.SetExpertMagicNumber(MagicNumber);
-   trade.SetDeviationInPoints(50);
-   Print("V4.4 FINAL STARTED");
-   return(INIT_SUCCEEDED);
-}
-
-void OnDeinit(const int reason){ IndicatorRelease(handle_fastMA); IndicatorRelease(handle_slowMA); IndicatorRelease(handle_rsi); IndicatorRelease(handle_atr); IndicatorRelease(handle_adx); }
-
-// FIX 2: ROBUST SYMBOL PARSER
-void ParseSymbolCurrencies()
-{
-   string name = _Symbol;
-   StringToUpper(name);
-   // Remove suffixes like.m.a.ecn.pro.r.s
-   int pos = StringFind(name, ".");
-   if(pos > 0) name = StringSubstr(name, 0, pos);
-
-   if(StringFind(name, "XAU") >= 0){ base_currency = "XAU"; quote_currency = "USD"; return; }
-   if(StringFind(name, "US30") >= 0 || StringFind(name, "DOW") >= 0){ base_currency = "USD"; quote_currency = "USD"; return; }
-   if(StringFind(name, "VOL") >= 0 || StringFind(name, "BOOM") >= 0 || StringFind(name, "CRASH") >= 0){ base_currency = "USD"; quote_currency = "USD"; return; }
-
-   if(StringLen(name) >= 6)
-   {
-      base_currency = StringSubstr(name, 0, 3);
-      quote_currency = StringSubstr(name, 3, 3);
-   }
-}
-
-bool GetIndicators(double &fast, double &slow, double &rsi, double &atr, double &adx, double &price)
 {
    if(CopyBuffer(handle_fastMA,0,0,2,fastMA_buf)<=0) return false;
    if(CopyBuffer(handle_slowMA,0,0,2,slowMA_buf)<=0) return false;
@@ -184,10 +94,10 @@ bool CheckFFNewsCSV()
       int count = StringSplit(line, ',', parts); // Split by comma
       if(count < 5) continue;
 
-      string date_str = StringReplace(parts[0], "\"", "");
-      string time_str = StringReplace(parts[1], "\"", "");
-      string currency = StringReplace(parts[2], "\"", "");
-      string impact = StringReplace(parts[3], "\"", "");
+      string date_str = StringReplace((string)parts[0], "\"", "");
+      string time_str = StringReplace((string)parts[1], "\"", "");
+      string currency = StringReplace((string)parts[2], "\"", "");
+      string impact = StringReplace((string)parts[3], "\"", "");
 
       if(FilterNewsByCurrency && currency!= base_currency && currency!= quote_currency) continue; // FIX 2
 
